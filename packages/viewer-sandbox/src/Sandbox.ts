@@ -1267,16 +1267,13 @@ export default class Sandbox {
     const authToken = localStorage.getItem(
       url.includes('latest') ? 'AuthTokenLatest' : 'AuthToken'
     ) as string
-    const objUrls = await UrlHelper.getResourceUrls(url, authToken)
+    const objUrls = await UrlHelper.getResourceUrls(url, { authToken })
     for (const objUrl of objUrls) {
       console.log(`Loading ${url}`)
-      const loader = new SpeckleLoader(
-        this.viewer.getWorldTree(),
-        objUrl,
+      const loader = new SpeckleLoader(this.viewer.getWorldTree(), objUrl, {
         authToken,
-        true,
-        undefined
-      )
+        enableCaching: true
+      })
       /** Too spammy */
       // loader.on(LoaderEvent.LoadProgress, (arg: { progress: number; id: string }) => {
       //   console.warn(arg)

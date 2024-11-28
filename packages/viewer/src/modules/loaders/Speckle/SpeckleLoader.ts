@@ -24,15 +24,20 @@ export class SpeckleLoader extends Loader {
   constructor(
     targetTree: WorldTree,
     resource: string,
-    authToken?: string,
-    enableCaching?: boolean,
-    resourceData?: string | ArrayBuffer
+    options: {
+      authToken?: string
+      /** Use to proxy object requests through a different server than the one provided in the resource */
+      serverUrl?: string
+      enableCaching?: boolean
+      resourceData?: string | ArrayBuffer
+    } = {}
   ) {
-    super(resource, resourceData)
+    super(resource, options.resourceData)
     this.tree = targetTree
     let token = undefined
     try {
-      token = authToken || (localStorage.getItem('AuthToken') as string | undefined)
+      token =
+        options.authToken || (localStorage.getItem('AuthToken') as string | undefined)
     } catch (error) {
       // Accessing localStorage may throw when executing on sandboxed document, ignore.
     }
@@ -54,7 +59,7 @@ export class SpeckleLoader extends Loader {
       throw new Error('Unexpected object url format.')
     }
 
-    const serverUrl = url.origin
+    const serverUrl = options.serverUrl ?? url.origin
     const streamId = segments[2]
     const objectId = segments[4]
 
@@ -63,8 +68,11 @@ export class SpeckleLoader extends Loader {
       token,
       streamId,
       objectId,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      options: { enableCaching, customLogger: (Logger as any).log }
+      options: {
+        enableCaching: options.enableCaching,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        customLogger: (Logger as any).log
+      }
     })
 
     this.converter = new SpeckleConverter(this.loader, this.tree)

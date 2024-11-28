@@ -456,7 +456,10 @@ export class LegacyViewer extends Viewer {
     enableCaching = true,
     zoomToObject = true
   ) {
-    const loader = new SpeckleLoader(this.tree, url, token, enableCaching)
+    const loader = new SpeckleLoader(this.tree, url, {
+      authToken: token,
+      enableCaching
+    })
     return this.loadObject(loader, zoomToObject)
   }
 

@@ -12,16 +12,25 @@ interface CommitReferencedObjectUrl {
   commitId: string
 }
 
-export async function getResourceUrls(
-  url: string,
+interface GetResourceUrlsOptions {
   authToken?: string
-): Promise<string[]> {
-  /** I'm up for a better way of doing this */
-  if (url.includes('streams')) return getOldResourceUrls(url, authToken)
-  return getNewResourceUrls(url, authToken)
+  /** Use to proxy graphql requests through a different server than the provided url */
+  serverUrl?: string
 }
 
-async function getOldResourceUrls(url: string, authToken?: string): Promise<string[]> {
+export async function getResourceUrls(
+  url: string,
+  options?: GetResourceUrlsOptions
+): Promise<string[]> {
+  /** I'm up for a better way of doing this */
+  if (url.includes('streams')) return getOldResourceUrls(url, options)
+  return getNewResourceUrls(url, options)
+}
+
+async function getOldResourceUrls(
+  url: string,
+  options?: GetResourceUrlsOptions
+): Promise<string[]> {
   const parsed = new URL(url)
   const streamId = url.split('/streams/')[1].substring(0, 10)
 
@@ -30,12 +39,8 @@ async function getOldResourceUrls(url: string, authToken?: string): Promise<stri
   if (url.includes('commits')) {
     const commitId = url.split('/commits/')[1].substring(0, 10)
     const objUrl = await getCommitReferencedObjectUrl(
-      {
-        origin: parsed.origin,
-        streamId,
-        commitId
-      },
-      authToken
+      { origin: parsed.origin, streamId, commitId },
+      options
     )
     objsUrls.push(objUrl)
   }
@@ -58,7 +63,7 @@ async function getOldResourceUrls(url: string, authToken?: string): Promise<stri
                 streamId,
                 commitId: resId
               } as CommitReferencedObjectUrl,
-              authToken
+              options
             )
           )
         } else {
@@ -73,8 +78,9 @@ async function getOldResourceUrls(url: string, authToken?: string): Promise<stri
 
 async function getCommitReferencedObjectUrl(
   ref: CommitReferencedObjectUrl,
-  authToken?: string
+  options?: GetResourceUrlsOptions
 ) {
+  const { authToken, serverUrl } = options ?? {}
   const headers: { 'Content-Type': string; Authorization: string } = {
     'Content-Type': 'application/json',
     Authorization: ''
@@ -82,7 +88,7 @@ async function getCommitReferencedObjectUrl(
   if (authToken) {
     headers['Authorization'] = `Bearer ${authToken}`
   }
-  const res = await fetch(`${ref.origin}/graphql`, {
+  const res = await fetch(`${serverUrl}/graphql`, {
     method: 'POST',
     headers,
     body: JSON.stringify({
@@ -103,13 +109,16 @@ async function getCommitReferencedObjectUrl(
   return `${ref.origin}/streams/${ref.streamId}/objects/${data.stream.commit.referencedObject}`
 }
 
-async function getNewResourceUrls(url: string, authToken?: string): Promise<string[]> {
+async function getNewResourceUrls(
+  url: string,
+  options?: GetResourceUrlsOptions
+): Promise<string[]> {
+  const { authToken, serverUrl } = options ?? {}
   const parsed = new URL(decodeURI(url))
   const params = parsed.href.match(/[^/]+$/)
   if (!params) {
     return Promise.reject('No model or object ids specified')
   }
-
   const projectId = parsed.href.split('/projects/')[1].substring(0, 10)
   const headers: { 'Content-Type': string; Authorization: string } = {
     'Content-Type': 'application/json',
@@ -120,10 +129,7 @@ async function getNewResourceUrls(url: string, authToken?: string): Promise<stri
     headers['Authorization'] = `Bearer ${authToken}`
   }
 
-  const ref: ReferencedObjectUrl = {
-    origin: parsed.origin,
-    projectId
-  }
+  const ref: ReferencedObjectUrl = { origin: parsed.origin, projectId }
 
   const resources = SpeckleViewer.ViewerRoute.parseUrlParameters(
     decodeURIComponent(params[0])
@@ -136,9 +142,9 @@ async function getNewResourceUrls(url: string, authToken?: string): Promise<stri
     if (SpeckleViewer.ViewerRoute.isObjectResource(resource)) {
       promises.push(objectResourceToUrl(ref, resource))
     } else if (SpeckleViewer.ViewerRoute.isModelResource(resource)) {
-      promises.push(modelResourceToUrl(headers, ref, resource))
+      promises.push(modelResourceToUrl(headers, ref, resource, serverUrl))
     } else if (SpeckleViewer.ViewerRoute.isAllModelsResource(resource)) {
-      promises.push(modelAllResourceToUrl(headers, ref))
+      promises.push(modelAllResourceToUrl(headers, ref, serverUrl))
     }
   }
 
@@ -160,11 +166,12 @@ async function modelResourceToUrl(
     Authorization: string
   },
   ref: ReferencedObjectUrl,
-  resource: SpeckleViewer.ViewerRoute.ViewerModelResource
+  resource: SpeckleViewer.ViewerRoute.ViewerModelResource,
+  serverUrl: string | undefined
 ): Promise<string> {
   return resource.versionId
-    ? runModelVersionQuery(headers, ref, resource)
-    : runModelLastVersionQuery(headers, ref, resource)
+    ? runModelVersionQuery(headers, ref, resource, serverUrl)
+    : runModelLastVersionQuery(headers, ref, resource, serverUrl)
 }
 
 async function modelAllResourceToUrl(
@@ -172,17 +179,19 @@ async function modelAllResourceToUrl(
     'Content-Type': string
     Authorization: string
   },
-  ref: ReferencedObjectUrl
+  ref: ReferencedObjectUrl,
+  serverUrl: string | undefined
 ): Promise<string[]> {
-  return runAllModelsQuery(headers, ref)
+  return runAllModelsQuery(headers, ref, serverUrl)
 }
 
 async function runModelLastVersionQuery(
   headers: { 'Content-Type': string; Authorization: string },
   ref: ReferencedObjectUrl,
-  resource: SpeckleViewer.ViewerRoute.ViewerModelResource
+  resource: SpeckleViewer.ViewerRoute.ViewerModelResource,
+  serverUrl: string | undefined
 ): Promise<string> {
-  const res = await fetch(`${ref.origin}/graphql`, {
+  const res = await fetch(`${serverUrl ?? ref.origin}/graphql`, {
     method: 'POST',
     headers,
     body: JSON.stringify({
@@ -221,9 +230,10 @@ async function runModelLastVersionQuery(
 async function runModelVersionQuery(
   headers: { 'Content-Type': string; Authorization: string },
   ref: ReferencedObjectUrl,
-  resource: SpeckleViewer.ViewerRoute.ViewerModelResource
+  resource: SpeckleViewer.ViewerRoute.ViewerModelResource,
+  serverUrl: string | undefined
 ): Promise<string> {
-  const res = await fetch(`${ref.origin}/graphql`, {
+  const res = await fetch(`${serverUrl ?? ref.origin}/graphql`, {
     method: 'POST',
     headers,
     body: JSON.stringify({
@@ -260,9 +270,10 @@ async function runModelVersionQuery(
 
 async function runAllModelsQuery(
   headers: { 'Content-Type': string; Authorization: string },
-  ref: ReferencedObjectUrl
+  ref: ReferencedObjectUrl,
+  serverUrl: string | undefined
 ): Promise<string[]> {
-  const res = await fetch(`${ref.origin}/graphql`, {
+  const res = await fetch(`${serverUrl ?? ref.origin}/graphql`, {
     method: 'POST',
     headers,
     body: JSON.stringify({

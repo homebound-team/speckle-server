@@ -213,7 +213,7 @@ export class DiffExtension extends Extension {
     if (!this.tree.findId(urlA)) {
       loadPromises.push(
         this.viewer.loadObject(
-          new SpeckleLoader(this.viewer.getWorldTree(), urlA, authToken),
+          new SpeckleLoader(this.viewer.getWorldTree(), urlA, { authToken }),
           false
         )
       )
@@ -222,7 +222,7 @@ export class DiffExtension extends Extension {
     if (!this.tree.findId(urlB)) {
       loadPromises.push(
         this.viewer.loadObject(
-          new SpeckleLoader(this.viewer.getWorldTree(), urlB, authToken),
+          new SpeckleLoader(this.viewer.getWorldTree(), urlB, { authToken }),
           false
         )
       )
